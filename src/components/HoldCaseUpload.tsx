@@ -20,7 +20,7 @@ export function HoldCaseUpload({ userRole }: HoldCaseUploadProps) {
   const [uploadResult, setUploadResult] = useState<DocketUploadResponse | null>(null);
   const [uploadHistory, setUploadHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const { showToast } = useToast();
+  const { success, error } = useToast();
 
   // Fetch upload history
   useEffect(() => {
@@ -75,14 +75,14 @@ export function HoldCaseUpload({ userRole }: HoldCaseUploadProps) {
       if (response.success && response.data) {
         setUploadResult(response.data);
         setShowValidation(true);
-        showToast('success', `Upload successful: ${response.data.created} created, ${response.data.errors} errors`);
+        success(`Upload successful: ${response.data.created} created, ${response.data.errors} errors`);
         // Refresh history
         window.location.reload();
       } else {
         throw new Error(response.message || 'Upload failed');
       }
     } catch (err: any) {
-      showToast('error', err.message || 'Failed to upload file');
+      error(err.message || 'Failed to upload file');
     } finally {
       setUploading(false);
     }

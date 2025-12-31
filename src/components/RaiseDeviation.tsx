@@ -25,7 +25,7 @@ export function RaiseDeviation({ userRole, preSelectedCase }: RaiseDeviationProp
   const [loading, setLoading] = useState(false);
   const [caseData, setCaseData] = useState<any>(null);
   const [loadingCase, setLoadingCase] = useState(false);
-  const { showToast } = useToast();
+  const { success, error } = useToast();
 
   // Determine which hierarchy the user belongs to
   const isBusinessHierarchy = userRole === 'SH Business';
@@ -42,13 +42,13 @@ export function RaiseDeviation({ userRole, preSelectedCase }: RaiseDeviationProp
           }
         })
         .catch(err => {
-          showToast('error', 'Failed to load case details');
+          error('Failed to load case details');
         })
         .finally(() => {
           setLoadingCase(false);
         });
     }
-  }, [preSelectedCase, showToast]);
+  }, [preSelectedCase, error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +80,7 @@ export function RaiseDeviation({ userRole, preSelectedCase }: RaiseDeviationProp
       
       if (response.success) {
         setShowSuccess(true);
-        showToast('success', 'Deviation raised successfully');
+        success('Deviation raised successfully');
         setTimeout(() => {
           setShowSuccess(false);
           // Reset form
@@ -96,7 +96,7 @@ export function RaiseDeviation({ userRole, preSelectedCase }: RaiseDeviationProp
         throw new Error(response.message || 'Failed to raise deviation');
       }
     } catch (err: any) {
-      showToast('error', err.message || 'Failed to raise deviation');
+      error(err.message || 'Failed to raise deviation');
     } finally {
       setLoading(false);
     }
