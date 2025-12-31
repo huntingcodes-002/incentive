@@ -19,12 +19,22 @@ The application uses environment variables for configuration. All environment va
   - Production: `https://api.mysaarathi.in`
   - Local Development: `http://localhost:8000`
 
+#### `NEXT_PUBLIC_BASE_PATH`
+
+- **Description**: The base path where the app is served (for subpath deployment)
+- **Default**: `/apps/incentive-iq`
+- **Example Values**:
+  - Production: `/apps/incentive-iq`
+  - Local Development: `` (empty string for root path)
+- **Note**: This should match your nginx location block path
+
 ### Setting Up Environment Variables
 
 1. **Create a `.env.local` file** in the root directory of `next-incentive-api/`:
    ```bash
    # .env.local
    NEXT_PUBLIC_API_BASE_URL=https://staging-api.mysaarathi.in
+   NEXT_PUBLIC_BASE_PATH=/apps/incentive-iq
    ```
 
 2. **For different environments**, you can create:
@@ -39,14 +49,17 @@ The application uses environment variables for configuration. All environment va
 
 ### Current Configuration
 
-The app currently uses the following default:
+The app currently uses the following defaults:
 - **API Base URL**: `https://staging-api.mysaarathi.in`
+- **Base Path**: `/apps/incentive-iq`
 
-This is hardcoded as a fallback in the following files:
+The API base URL is hardcoded as a fallback in the following files:
 - `src/lib/api.ts`
 - `src/lib/auth.ts`
 - `src/lib/incentive-api.ts`
 - `src/app/api/auth/login/route.ts`
+
+The base path is configured in `next.config.js` and can be overridden with the `NEXT_PUBLIC_BASE_PATH` environment variable.
 
 ### Docker Deployment
 
@@ -57,6 +70,7 @@ docker run -d \
   --name incentive-iq \
   -p 3006:3006 \
   -e NEXT_PUBLIC_API_BASE_URL=https://staging-api.mysaarathi.in \
+  -e NEXT_PUBLIC_BASE_PATH=/apps/incentive-iq \
   --restart unless-stopped \
   incentive-iq:latest
 ```
