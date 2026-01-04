@@ -8,6 +8,7 @@ import { EligibleCases } from '@/components/EligibleCases';
 import { RaiseDeviation } from '@/components/RaiseDeviation';
 import { DeviationApproval } from '@/components/DeviationApproval';
 import { HoldCaseUpload } from '@/components/HoldCaseUpload';
+import { ViewCases } from '@/components/ViewCases';
 import { FinalCases } from '@/components/FinalCases';
 import { MobileHeader } from '@/components/mobile/MobileHeader';
 import { MobileWelcomeBanner } from '@/components/mobile/MobileWelcomeBanner';
@@ -30,9 +31,18 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
   const { user } = useAuth();
   const [userName, setUserName] = useState('');
   const [actualUserRole, setActualUserRole] = useState(propUserRole || 'Unknown');
-  const [activeView, setActiveView] = useState('eligible');
+
+  // Set default view based on role
+  const getDefaultView = (role: string) => {
+    if (role === 'Central Ops' || role === 'Admin') {
+      return 'view-cases';
+    }
+    return 'eligible';
+  };
+
+  const [activeView, setActiveView] = useState(getDefaultView(propUserRole || 'Unknown'));
   const [selectedCaseForDeviation, setSelectedCaseForDeviation] = useState<string | undefined>(undefined);
-  
+
   // Initialize with current month (YYYY-MM format)
   const getCurrentMonth = () => {
     const now = new Date();
@@ -40,10 +50,10 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
   };
-  
+
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [isMobile, setIsMobile] = useState(false);
-  
+
   // Toast functionality
   const { toasts, removeToast } = useToast();
 
@@ -58,6 +68,16 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
       const name = getUserDisplayName(user);
       setActualUserRole(role);
       setUserName(name);
+      // Set default view based on actual role
+      const defaultViewForRole = getDefaultView(role);
+      setActiveView(prevView => {
+        // Only change if we're still on the initial default view
+        const initialDefault = getDefaultView(propUserRole || 'Unknown');
+        if (prevView === initialDefault) {
+          return defaultViewForRole;
+        }
+        return prevView;
+      });
     }
   }, [user, propUserRole]);
 
@@ -66,7 +86,7 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -82,11 +102,20 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
       case 'eligible':
         return <EligibleCases userRole={actualUserRole} userName={userName} selectedMonth={selectedMonth} onNavigateToDeviation={handleNavigateToDeviation} />;
       case 'raise-deviation':
-        return <RaiseDeviation userRole={actualUserRole} preSelectedCase={selectedCaseForDeviation} />;
+        return (
+          <RaiseDeviation
+            userRole={actualUserRole}
+            preSelectedCase={selectedCaseForDeviation}
+            onCancel={() => setActiveView('eligible')}
+            onSuccess={() => setActiveView('eligible')}
+          />
+        );
       case 'deviation-approval':
         return <DeviationApproval userRole={actualUserRole} />;
       case 'hold-upload':
         return <HoldCaseUpload userRole={actualUserRole} />;
+      case 'view-cases':
+        return <ViewCases userRole={actualUserRole} />;
       case 'final-cases':
         return <FinalCases userRole={actualUserRole} userName={userName} selectedMonth={selectedMonth} />;
       default:
@@ -104,6 +133,8 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
         return <MobileDeviationApproval userRole={actualUserRole} />;
       case 'hold-upload':
         return <MobileHoldCaseUpload />;
+      case 'view-cases':
+        return <ViewCases userRole={actualUserRole} />;
       case 'final-cases':
         return <MobileFinalCases userRole={actualUserRole} userName={userName} selectedMonth={selectedMonth} />;
       default:
@@ -122,10 +153,10 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
     return (
       <div className="min-h-screen bg-gray-50">
         {/* Mobile Header */}
-        <MobileHeader 
-          userName={userName} 
-          userRole={actualUserRole} 
-          onRoleChange={() => {}} // No role change in mobile
+        <MobileHeader
+          userName={userName}
+          userRole={actualUserRole}
+          onRoleChange={() => { }} // No role change in mobile
           activeView={activeView}
           onViewChange={setActiveView}
         />
@@ -192,16 +223,16 @@ export function RolePage({ userRole: propUserRole }: RolePageProps) {
       {/* Main Layout - accounts for fixed header + welcome banner */}
       <div className="flex pt-[140px]">
         {/* Fixed Sidebar */}
-        <div className="fixed left-0 w-64 h-[calc(100vh-140px)] border-r border-gray-200 bg-white overflow-hidden">
-          <Sidebar 
-            activeView={activeView} 
-            onViewChange={setActiveView} 
+        <div className="fixed left-0 w-64 h-[calc(100vh-140px)] border-r border-gray-200 bg-white shadow-sm overflow-hidden z-30">
+          <Sidebar
+            activeView={activeView}
+            onViewChange={setActiveView}
             userRole={actualUserRole}
             selectedMonth={selectedMonth}
             onMonthChange={setSelectedMonth}
           />
         </div>
-        
+
         {/* Main Content Area - with left margin for sidebar */}
         <div className="flex-1 ml-64 flex flex-col h-[calc(100vh-140px)]">
           {/* Module Content - scrollable */}

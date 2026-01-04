@@ -103,21 +103,25 @@ export function ViewSalary() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Employee Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Monthly Salary</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Uploaded By</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Uploaded At</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Updated At</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {salaries.map((salary, index) => (
                     <tr key={index} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-sm text-indigo-600 font-medium">{salary.employee_code}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{salary.employee_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {salary.employee_name || salary.name || '-'}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         ₹{salary.monthly_salary.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{salary.uploaded_by_name || salary.uploaded_by || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {salary.uploaded_at
-                          ? new Date(salary.uploaded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        {salary.uploaded_by_name || salary.uploaded_by_code || salary.uploaded_by || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {salary.modified_at
+                          ? new Date(salary.modified_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                           : '-'}
                       </td>
                     </tr>

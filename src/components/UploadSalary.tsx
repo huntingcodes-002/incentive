@@ -37,7 +37,9 @@ export function UploadSalary() {
       const response = await uploadSalary(selectedFile);
       if (response.success && response.data) {
         setUploadResult(response.data);
-        success(`Upload successful: ${response.data.successful} successful, ${response.data.failed} failed`);
+        const { created, updated, errors } = response.data;
+        const successMsg = `Upload successful: ${created} created, ${updated} updated, ${errors} errors`;
+        success(successMsg);
         // Clear file selection after successful upload
         setSelectedFile(null);
       } else {
@@ -156,33 +158,57 @@ EMP005,Charlie Brown,45000`;
             <CheckCircle className="w-5 h-5 text-green-600" />
             Upload Results
           </h3>
-          <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-4 gap-4 mb-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-gray-600 mb-1">Total Rows</p>
               <p className="text-lg font-semibold text-gray-900">{uploadResult.total_rows}</p>
             </div>
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <p className="text-xs text-gray-600 mb-1">Successful</p>
-              <p className="text-lg font-semibold text-green-700">{uploadResult.successful}</p>
+              <p className="text-xs text-gray-600 mb-1">Created</p>
+              <p className="text-lg font-semibold text-green-700">{uploadResult.created}</p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-1">Updated</p>
+              <p className="text-lg font-semibold text-amber-700">{uploadResult.updated}</p>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-xs text-gray-600 mb-1">Failed</p>
-              <p className="text-lg font-semibold text-red-700">{uploadResult.failed}</p>
+              <p className="text-xs text-gray-600 mb-1">Errors</p>
+              <p className="text-lg font-semibold text-red-700">{uploadResult.errors}</p>
             </div>
           </div>
 
           {/* Error Details */}
-          {uploadResult.errors && uploadResult.errors.length > 0 && (
+          {uploadResult.error_details && uploadResult.error_details.length > 0 && (
             <div className="mt-4">
               <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-red-600" />
-                Errors ({uploadResult.errors.length})
+                Error Details ({uploadResult.error_details.length})
               </h4>
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-48 overflow-y-auto">
                 <ul className="space-y-1">
-                  {uploadResult.errors.map((error, index) => (
+                  {uploadResult.error_details.map((error, index) => (
                     <li key={index} className="text-xs text-red-700">
-                      Row {error.row}: {error.error}
+                      {error.employee_code ? `Employee ${error.employee_code}: ` : error.row ? `Row ${error.row}: ` : ''}
+                      {error.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Skipped Employees */}
+          {uploadResult.skipped_employees && uploadResult.skipped_employees.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                Skipped Employees ({uploadResult.skipped_employees.length})
+              </h4>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                <ul className="space-y-1">
+                  {uploadResult.skipped_employees.map((employeeCode, index) => (
+                    <li key={index} className="text-xs text-amber-700">
+                      {employeeCode}
                     </li>
                   ))}
                 </ul>

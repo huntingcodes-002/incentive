@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu, X, LayoutDashboard, CheckCircle, Upload, Trophy } from 'lucide-react';
+import { Menu, X, LayoutDashboard, CheckCircle, Upload, Trophy, FileText } from 'lucide-react';
 
 interface MobileNavProps {
   activeView: string;
@@ -15,6 +15,7 @@ export function MobileNav({ activeView, onViewChange, userRole }: MobileNavProps
   const menuItems = [
     { id: 'eligible', label: 'Eligible Cases', icon: LayoutDashboard, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
     { id: 'deviation-approval', label: 'Deviation Inbox', icon: CheckCircle, roles: ['NBH', 'NCH'] },
+    { id: 'view-cases', label: 'View Cases', icon: FileText, roles: ['Admin', 'Central Ops'] },
     { id: 'hold-upload', label: 'Hold Case Upload', icon: Upload, roles: ['Admin', 'Central Ops'] },
     { id: 'final-cases', label: 'Final Incentive', icon: Trophy, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
   ];

@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { HRSidebar } from '@/components/HRSidebar';
-import { UploadSalary } from '@/components/UploadSalary';
-import { ViewSalary } from '@/components/ViewSalary';
+import { HRSidebar } from './HRSidebar';
+import { UploadSalary } from './UploadSalary';
+import { ViewSalary } from './ViewSalary';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserRole, getUserDisplayName } from '@/lib/permissions';
-import { useEffect } from 'react';
 
 export function HRPage() {
   const { user } = useAuth();

@@ -347,7 +347,7 @@ export async function listApplications(
   const queryParams = new URLSearchParams();
   queryParams.append('month', params.month.toString());
   queryParams.append('year', params.year.toString());
-  
+
   if (params.page) queryParams.append('page', params.page.toString());
   if (params.page_size) queryParams.append('page_size', params.page_size.toString());
   if (params.application_status) queryParams.append('application_status', params.application_status);
@@ -379,7 +379,7 @@ export async function getApplicationSummary(
   const queryParams = new URLSearchParams();
   queryParams.append('month', month.toString());
   queryParams.append('year', year.toString());
-  
+
   // Add filters if provided
   if (filters) {
     Object.entries(filters).forEach(([key, value]) => {
@@ -400,7 +400,7 @@ export async function getGeneralSummary(
   const queryParams = new URLSearchParams();
   queryParams.append('month', month.toString());
   queryParams.append('year', year.toString());
-  
+
   if (filters) {
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -426,7 +426,7 @@ export async function listDeviations(
   params?: ListDeviationsParams
 ): Promise<ApiResponse<DeviationListResponse>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     if (params.status) queryParams.append('status', params.status);
     if (params.deviation_type) queryParams.append('deviation_type', params.deviation_type);
@@ -461,9 +461,26 @@ export interface RaiseDeviationRequest {
 export async function raiseDeviation(
   data: RaiseDeviationRequest
 ): Promise<ApiResponse<Deviation>> {
+  // Ensure all required fields are present
+  if (!data.case_id) {
+    throw new Error('Case ID is required');
+  }
+  if (!data.reason) {
+    throw new Error('Reason is required');
+  }
+  if (!data.deviation_type) {
+    throw new Error('Deviation type is required');
+  }
+
   return apiRequest<Deviation>('/api/incentive-iq/deviations/raise_deviation/', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      case_id: data.case_id,
+      deviation_type: data.deviation_type,
+      proposed_mapping: data.proposed_mapping || {},
+      reason: data.reason,
+      supporting_docs: data.supporting_docs || [],
+    }),
   });
 }
 
@@ -503,7 +520,7 @@ export async function listDockets(
   params?: ListDocketsParams
 ): Promise<ApiResponse<DocketListResponse>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -524,7 +541,7 @@ export async function uploadDocket(
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('id_token') : null;
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://staging-api.mysaarathi.in';
-  
+
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -555,7 +572,7 @@ export async function getMyIncentives(
   params?: MyIncentivesParams
 ): Promise<ApiResponse<MyIncentive>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     if (params.period) queryParams.append('period', params.period);
     if (params.is_final !== undefined) queryParams.append('is_final', params.is_final.toString());
@@ -576,7 +593,7 @@ export async function getBranchIncentives(
   params?: BranchIncentivesParams
 ): Promise<ApiResponse<BranchIncentive>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -602,7 +619,7 @@ export async function getAggregatedIncentives(
   params: AggregatedIncentivesParams
 ): Promise<ApiResponse<AggregatedIncentive>> {
   const queryParams = new URLSearchParams();
-  
+
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       queryParams.append(key, value.toString());
@@ -615,6 +632,7 @@ export async function getAggregatedIncentives(
 export interface EligibleCasesParams {
   period?: string;
   branch?: string;
+  state?: string;
   rm?: string;
   search?: string;
 }
@@ -623,7 +641,7 @@ export async function getEligibleCases(
   params?: EligibleCasesParams
 ): Promise<ApiResponse<EligibleCasesResponse>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -636,15 +654,64 @@ export async function getEligibleCases(
   return apiRequest<EligibleCasesResponse>(`/api/incentive-iq/incentives/eligible-cases/${queryString ? `?${queryString}` : ''}`);
 }
 
+// ============== Location APIs ==============
+
+export interface State {
+  id: number;
+  name: string;
+  code: string | null;
+}
+
+export interface Branch {
+  id: number;
+  name: string;
+  nucleus_branch_code?: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  pin_code: string | null;
+  city: string;
+  state: string;
+}
+
+export interface UserStateBranchesResponse {
+  user_state: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+  branches: Branch[];
+}
+
+export async function getAllStates(): Promise<ApiResponse<State[]>> {
+  return apiRequest<State[]>('/api/location/states');
+}
+
+export async function getUserStateBranches(
+  state?: string | number
+): Promise<ApiResponse<UserStateBranchesResponse>> {
+  const queryParams = new URLSearchParams();
+  if (state !== undefined) {
+    queryParams.append('state', state.toString());
+  }
+  const queryString = queryParams.toString();
+  return apiRequest<UserStateBranchesResponse>(`/api/location/user-state-branches${queryString ? `?${queryString}` : ''}`);
+}
+
 // ============== Salary Management APIs ==============
 
 export interface Salary {
+  employee: string;
   employee_code: string;
   employee_name: string;
+  name: string;
   monthly_salary: number;
-  uploaded_at: string;
+  encrypted_salary: string;
   uploaded_by: string;
-  uploaded_by_name?: string;
+  uploaded_by_code: string;
+  uploaded_by_name: string;
+  created_at: string;
+  modified_at: string;
 }
 
 export interface SalaryListResponse {
@@ -656,12 +723,15 @@ export interface SalaryListResponse {
 
 export interface SalaryUploadResponse {
   total_rows: number;
-  successful: number;
-  failed: number;
-  errors: Array<{
-    row: number;
+  created: number;
+  updated: number;
+  errors: number;
+  error_details: Array<{
+    row?: number;
+    employee_code?: string;
     error: string;
   }>;
+  skipped_employees: string[];
 }
 
 export interface ListSalariesParams {
@@ -676,7 +746,7 @@ export async function listSalaries(
   params?: ListSalariesParams
 ): Promise<ApiResponse<SalaryListResponse>> {
   const queryParams = new URLSearchParams();
-  
+
   if (params) {
     if (params.search) queryParams.append('search', params.search);
     if (params.employee_code) queryParams.append('employee_code', params.employee_code);
@@ -697,7 +767,7 @@ export async function uploadSalary(
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('id_token') : null;
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://staging-api.mysaarathi.in';
-  
+
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -717,3 +787,20 @@ export async function uploadSalary(
   return response.json();
 }
 
+
+export interface StateEmployee {
+  name: string;
+  employee_code: string;
+}
+
+export interface StateEmployeesResponse {
+  state: string;
+  "Relationship Managers": Record<string, StateEmployee[]>;
+  "Branch Managers": Record<string, StateEmployee[]>;
+}
+
+export async function getStateEmployees(
+  filter: string = 'business'
+): Promise<ApiResponse<StateEmployeesResponse>> {
+  return apiRequest<StateEmployeesResponse>(`/api/incentive-iq/employees/state-employees/?filter=${filter}`);
+}

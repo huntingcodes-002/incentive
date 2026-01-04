@@ -6,7 +6,7 @@ import { SummaryCard, SummaryCardGrid } from '@/components/ui/SummaryCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { getEligibleCases, EligibleCasesResponse, listApplications, ApplicationListResponse, Application } from '@/lib/incentive-api';
+import { getEligibleCases, EligibleCasesResponse, listApplications, ApplicationListResponse, Application, getAllStates, getUserStateBranches, State, Branch } from '@/lib/incentive-api';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -26,43 +26,85 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
   const [data, setData] = useState<EligibleCasesResponse | null>(null);
   const [applicationsData, setApplicationsData] = useState<ApplicationListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Multi-tier filters
   const [selectedState, setSelectedState] = useState('all');
   const [selectedArea, setSelectedArea] = useState('all');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [selectedRM, setSelectedRM] = useState('all');
 
+  // Location data from API
+  const [states, setStates] = useState<State[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+
   const { error: showError } = useToast();
   const { user } = useAuth();
   const isRM = userRole === 'RM';
+  const isSHBusiness = userRole === 'SH Business';
   const isLeadershipRole = ['NBH', 'NCH', 'SH Business', 'SH Credit', 'AH Business', 'AH Credit'].includes(userRole);
 
   // Fetch data - different API for RM vs others
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedMonth) return;
-      
+
       setLoading(true);
       setError(null);
       try {
-        if (isRM) {
-          // For RM, use applications API
+        // Check if we should use the applications API (for specified roles)
+        const useApplicationsApi = ['RM', 'BM', 'SH Business', 'NBH'].includes(userRole);
+
+        if (useApplicationsApi) {
+          // For RM, BM, SH Business, NBH use applications API
           const [year, month] = selectedMonth.split('-');
           const monthNum = parseInt(month, 10);
           const yearNum = parseInt(year, 10);
-          
-          // Get user's employee code for filtering
-          const employeeCode = user?.employee_code || user?.code || '';
-          
-          const response = await listApplications({
+
+          // Build filter parameters based on role
+          const params: any = {
             month: monthNum,
             year: yearNum,
             incentive_status: 'eligible', // Filter for eligible cases
-            ...(employeeCode && { sourcing_rm: employeeCode }), // Filter by RM's employee code
             page_size: 1000, // Get all records
-          });
-          
+          };
+
+          if (userRole === 'RM') {
+            // For RM, filter by RM's employee code
+            const employeeCode = user?.employee_code || user?.code || '';
+            if (employeeCode) {
+              params.sourcing_rm = employeeCode;
+            }
+          } else if (userRole === 'BM') {
+            // For BM, filter by BM's employee code
+            const employeeCode = user?.employee_code || user?.code || '';
+            if (employeeCode) {
+              params.sourcing_bm = employeeCode;
+            }
+          } else if (userRole === 'SH Business') {
+            // For SH Business, filter by state (if available from user context)
+            if (user?.state_name) {
+              params.state_name = user.state_name;
+            }
+          }
+
+          // Apply state filter if selected (for leadership roles)
+          if (isLeadershipRole && selectedState !== 'all') {
+            params.state_name = selectedState;
+          }
+
+          // Apply branch filter if selected (for leadership roles)
+          if (isLeadershipRole && selectedBranch !== 'all') {
+            // Find the branch code from the branches array
+            const selectedBranchObj = branches.find(b => b.name === selectedBranch);
+            if (selectedBranchObj?.nucleus_branch_code) {
+              params.branch_code = selectedBranchObj.nucleus_branch_code;
+            }
+          }
+          // NBH sees all (or restricted by backend permissions)
+
+          const response = await listApplications(params);
+
           if (response.success && response.data) {
             setApplicationsData(response.data);
             // Transform applications data to match EligibleCasesResponse format
@@ -129,9 +171,25 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
           }
         } else {
           // For other roles, use eligible-cases API
+          // For other roles, use eligible-cases API
           const period = selectedMonth.replace('-', '_');
-          const response = await getEligibleCases({ period });
-          
+          const apiParams: any = { period };
+
+          // Apply filters if selected
+          if (selectedState !== 'all') {
+            // Find state code if needed, or pass state name depending on API requirement
+            // Based on APIS.md, eligible-cases doesn't explicitly list state filter but aggregated does
+            // However, user requested state/branch filters to be applied
+            // Assuming backend accepts 'state' or 'state_code'
+            apiParams.state = selectedState;
+          }
+
+          if (selectedBranch !== 'all') {
+            apiParams.branch = selectedBranch;
+          }
+
+          const response = await getEligibleCases(apiParams);
+
           if (response.success && response.data) {
             setData(response.data);
           } else {
@@ -147,7 +205,87 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
     };
 
     fetchData();
-  }, [selectedMonth, isRM, user, showError]);
+  }, [selectedMonth, userRole, user, showError, selectedState, selectedBranch, isLeadershipRole, branches]);
+
+  // Fetch states and branches for leadership roles
+  useEffect(() => {
+    if (!isLeadershipRole) return;
+
+    const fetchLocations = async () => {
+      setLoadingLocations(true);
+      try {
+        // Fetch all states - ONLY for NBH/NCH
+        // SH Business/Credit should not fetch all states as they are restricted to their state
+        if (userRole === 'NBH' || userRole === 'NCH') {
+          const statesResponse: any = await getAllStates();
+
+          let statesArray: State[] = [];
+          if (Array.isArray(statesResponse)) {
+            statesArray = statesResponse;
+          } else if (statesResponse && typeof statesResponse === 'object' && 'success' in statesResponse) {
+            const apiResponse = statesResponse as { success: boolean; data?: State[] };
+            if (apiResponse.success && apiResponse.data && Array.isArray(apiResponse.data)) {
+              statesArray = apiResponse.data;
+            }
+          } else if (statesResponse && typeof statesResponse === 'object' && 'data' in statesResponse) {
+            const dataResponse = statesResponse as { data: State[] };
+            if (Array.isArray(dataResponse.data)) {
+              statesArray = dataResponse.data;
+            }
+          }
+
+          if (statesArray.length > 0) {
+            setStates(statesArray);
+          }
+        }
+
+        // Fetch branches based on selected state
+        if (selectedState !== 'all') {
+          const branchesResponse: any = await getUserStateBranches(selectedState);
+
+          let branchesArray: Branch[] = [];
+          if (branchesResponse && typeof branchesResponse === 'object') {
+            if (Array.isArray(branchesResponse.branches)) {
+              // Direct format: { branches: [...] }
+              branchesArray = branchesResponse.branches;
+            } else if (branchesResponse.success && branchesResponse.data && Array.isArray(branchesResponse.data.branches)) {
+              // Wrapped format: { success: true, data: { branches: [...] } }
+              branchesArray = branchesResponse.data.branches;
+            }
+          }
+
+          if (branchesArray.length > 0) {
+            setBranches(branchesArray);
+          }
+        } else {
+          // If no state selected, get user's state branches (if available)
+          const branchesResponse: any = await getUserStateBranches();
+
+          let branchesArray: Branch[] = [];
+          if (branchesResponse && typeof branchesResponse === 'object') {
+            if (Array.isArray(branchesResponse.branches)) {
+              // Direct format: { branches: [...] }
+              branchesArray = branchesResponse.branches;
+            } else if (branchesResponse.success && branchesResponse.data && Array.isArray(branchesResponse.data.branches)) {
+              // Wrapped format: { success: true, data: { branches: [...] } }
+              branchesArray = branchesResponse.data.branches;
+            }
+          }
+
+          if (branchesArray.length > 0) {
+            setBranches(branchesArray);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch locations:', err);
+        // Don't show error toast for location fetch failures, just log
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    fetchLocations();
+  }, [isLeadershipRole, selectedState, userRole]);
 
   // Transform API data to component format
   const transformCaseData = (caseItem: any) => {
@@ -166,7 +304,7 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
           return 'Rejected';
         case 'pending':
           return 'Pending';
-      default:
+        default:
           return incentiveStatus || 'Pending'; // Show the actual status or default to Pending
       }
     };
@@ -208,35 +346,49 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
   // Filter cases based on user role - API already filters by permissions
   // We just need to apply local filters
   const roleFilteredCases = allCases;
-  
+
   // Get unique values for cascading filters
   const getAvailableStates = () => {
-    const states = [...new Set(roleFilteredCases.map(c => c.state).filter(s => s && s !== 'N/A'))];
-    return states.sort();
+    // For leadership roles, use API states
+    if (isLeadershipRole && states.length > 0) {
+      return states.map(s => s.name).sort();
+    }
+    // For other roles, extract from cases data
+    const caseStates = [...new Set(roleFilteredCases.map(c => c.state).filter(s => s && s !== 'N/A'))];
+    return caseStates.sort();
   };
 
   const getAvailableBranches = () => {
+    // For leadership roles, use API branches
+    if (isLeadershipRole && branches.length > 0) {
+      return branches.map(b => b.name).sort();
+    }
+    // For other roles, extract from cases data
     let casesToFilter = roleFilteredCases;
     if (selectedState !== 'all') {
       casesToFilter = casesToFilter.filter(c => c.state === selectedState);
     }
-    const branches = [...new Set(casesToFilter.map(c => c.branch).filter(b => b && b !== 'N/A'))];
-    return branches.sort();
+    const caseBranches = [...new Set(casesToFilter.map(c => c.branch).filter(b => b && b !== 'N/A'))];
+    return caseBranches.sort();
   };
-  
+
   // Filter by category
   const categoryFilteredCases = roleFilteredCases.filter(c => c.category === caseCategory);
-  
+
   // Apply filters
   const filteredCases = categoryFilteredCases.filter(c => {
-    const matchesSearch = 
+    const matchesSearch =
       c.applicationId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
-    const matchesState = selectedState === 'all' || c.state === selectedState;
-    const matchesBranch = selectedBranch === 'all' || c.branch === selectedBranch;
-    
+
+    // For leadership roles, we rely on server-side filtering for state and branch
+    // The API returns data filtered by the selected state/branch (or user's permissions)
+    // We bypass local filtering because there might be a mismatch between dropdown values (names) and API response (codes)
+    const matchesState = isLeadershipRole ? true : (selectedState === 'all' || c.state === selectedState);
+    const matchesBranch = isLeadershipRole ? true : (selectedBranch === 'all' || c.branch === selectedBranch);
+
     return matchesSearch && matchesStatus && matchesState && matchesBranch;
   });
 
@@ -318,16 +470,15 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
           <h1 className="text-gray-900 mb-1">Eligible Cases – {getMonthYearDisplay()}</h1>
           <p className="text-gray-500 text-sm">Review and manage eligible incentive cases</p>
         </div>
-        
+
         {/* Category Tabs */}
         <div className="flex gap-2">
           <button
             onClick={() => setCaseCategory('Disbursed')}
-            className={`px-4 py-2 rounded-lg transition-all ${
-              caseCategory === 'Disbursed'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-            }`}
+            className={`px-4 py-2 rounded-lg transition-all ${caseCategory === 'Disbursed'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center gap-2">
               <div>
@@ -340,11 +491,10 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
           </button>
           <button
             onClick={() => setCaseCategory('Login')}
-            className={`px-4 py-2 rounded-lg transition-all ${
-              caseCategory === 'Login'
-                ? 'bg-teal-600 text-white shadow-sm'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-            }`}
+            className={`px-4 py-2 rounded-lg transition-all ${caseCategory === 'Login'
+              ? 'bg-teal-600 text-white shadow-sm'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              }`}
           >
             <div className="flex items-center gap-2">
               <div>
@@ -427,8 +577,13 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
                   onChange={(e) => {
                     setSelectedState(e.target.value);
                     setSelectedBranch('all');
+                    // Reset branches when state changes
+                    if (e.target.value === 'all') {
+                      setBranches([]);
+                    }
                   }}
-                  className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                  disabled={loadingLocations}
+                  className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white disabled:opacity-50"
                 >
                   <option value="all">All States</option>
                   {getAvailableStates().map(state => (
@@ -439,41 +594,55 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
                   className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                  disabled={selectedState === 'all'}
+                  disabled={selectedState === 'all' || loadingLocations}
                 >
                   <option value="all">All Branches</option>
-                  {getAvailableBranches().map(branch => (
-                    <option key={branch} value={branch}>{branch}</option>
-                  ))}
+                  {loadingLocations ? (
+                    <option disabled>Loading branches...</option>
+                  ) : (
+                    getAvailableBranches().map(branch => (
+                      <option key={branch} value={branch}>{branch}</option>
+                    ))
+                  )}
                 </select>
               </>
             )}
 
             {/* State Heads - Branch filter */}
             {(userRole === 'SH Business' || userRole === 'SH Credit') && (
-                <select
-                  value={selectedBranch}
+              <select
+                value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                >
-                  <option value="all">All Branches</option>
-                  {getAvailableBranches().map(branch => (
+                disabled={loadingLocations}
+                className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white disabled:opacity-50"
+              >
+                <option value="all">All Branches</option>
+                {loadingLocations ? (
+                  <option disabled>Loading branches...</option>
+                ) : (
+                  getAvailableBranches().map(branch => (
                     <option key={branch} value={branch}>{branch}</option>
-                  ))}
-                </select>
+                  ))
+                )}
+              </select>
             )}
 
             {/* Area Heads - Branch filter */}
             {(userRole === 'AH Business' || userRole === 'AH Credit') && (
-                <select
-                  value={selectedBranch}
+              <select
+                value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
-                >
-                  <option value="all">All Branches</option>
-                  {getAvailableBranches().map(branch => (
+                disabled={loadingLocations}
+                className="px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white disabled:opacity-50"
+              >
+                <option value="all">All Branches</option>
+                {loadingLocations ? (
+                  <option disabled>Loading branches...</option>
+                ) : (
+                  getAvailableBranches().map(branch => (
                     <option key={branch} value={branch}>{branch}</option>
-                ))}
+                  ))
+                )}
               </select>
             )}
           </div>
@@ -509,42 +678,42 @@ export function EligibleCases({ userRole, userName, selectedMonth, onNavigateToD
                 </tr>
               ) : (
                 filteredCases.map((caseItem) => (
-                <tr key={caseItem.applicationId} className="hover:bg-gray-50 transition-colors bg-white">
-                  <td className="px-4 py-3 text-sm text-indigo-600 font-medium">{caseItem.applicationId}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{caseItem.customerName}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{caseItem.product}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {caseItem.loanAmount !== undefined && caseItem.loanAmount !== null
-                      ? `₹${caseItem.loanAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : caseCategory === 'Login' ? '-' : '₹0.00'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {caseItem.applicationDate 
-                      ? new Date(caseItem.applicationDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                      : '-'}
-                  </td>
-                  {caseCategory === 'Disbursed' && (
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                      {caseItem.disbursalDate 
-                        ? new Date(caseItem.disbursalDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  <tr key={caseItem.applicationId} className="hover:bg-gray-50 transition-colors bg-white">
+                    <td className="px-4 py-3 text-sm text-indigo-600 font-medium">{caseItem.applicationId}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{caseItem.customerName}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{caseItem.product}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {caseItem.loanAmount !== undefined && caseItem.loanAmount !== null
+                        ? `₹${caseItem.loanAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : caseCategory === 'Login' ? '-' : '₹0.00'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {caseItem.applicationDate
+                        ? new Date(caseItem.applicationDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                         : '-'}
+                    </td>
+                    {caseCategory === 'Disbursed' && (
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {caseItem.disbursalDate
+                          ? new Date(caseItem.disbursalDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '-'}
                       </td>
-                  )}
-                  <td className="px-4 py-3 text-sm text-gray-700">{caseItem.branch || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{caseItem.rmName || '-'}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={caseItem.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => setSelectedCase(caseItem)}
-                      className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View
-                    </button>
-                  </td>
-                </tr>
+                    )}
+                    <td className="px-4 py-3 text-sm text-gray-700">{caseItem.branch || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{caseItem.rmName || '-'}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={caseItem.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setSelectedCase(caseItem)}
+                        className="flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>

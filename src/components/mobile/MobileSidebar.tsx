@@ -1,4 +1,4 @@
-import { LayoutDashboard, CheckCircle, Upload, Trophy, X } from 'lucide-react';
+import { LayoutDashboard, CheckCircle, Upload, Trophy, X, FileText } from 'lucide-react';
 
 interface MobileSidebarProps {
   activeView: string;
@@ -12,6 +12,7 @@ export function MobileSidebar({ activeView, onViewChange, userRole, isOpen, onCl
   const menuItems = [
     { id: 'eligible', label: 'Eligible Cases', icon: LayoutDashboard, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
     { id: 'deviation-approval', label: 'Deviation Inbox', icon: CheckCircle, roles: ['NBH', 'NCH'] },
+    { id: 'view-cases', label: 'View Cases', icon: FileText, roles: ['Admin', 'Central Ops'] },
     { id: 'hold-upload', label: 'Hold Case Upload', icon: Upload, roles: ['Admin', 'Central Ops'] },
     { id: 'final-cases', label: 'Final Cases & Incentive', icon: Trophy, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
   ];

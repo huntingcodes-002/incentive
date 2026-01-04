@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, CheckCircle, Upload, Trophy, Calendar } from 'lucide-react';
+import { LayoutDashboard, CheckCircle, Upload, Trophy, Calendar, FileText } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -19,6 +19,7 @@ export function Sidebar({ activeView, onViewChange, userRole, selectedMonth, onM
   const menuItems = [
     { id: 'eligible', label: 'Eligible Cases', icon: LayoutDashboard, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
     { id: 'deviation-approval', label: 'Deviation Inbox', icon: CheckCircle, roles: ['NBH', 'NCH'] },
+    { id: 'view-cases', label: 'View Cases', icon: FileText, roles: ['Admin', 'Central Ops'] },
     { id: 'hold-upload', label: 'Hold Case Upload', icon: Upload, roles: ['Admin', 'Central Ops'] },
     { id: 'final-cases', label: 'Final Incentive', icon: Trophy, roles: ['NBH', 'SH Business', 'AH Business', 'BM', 'RM', 'NCH', 'SH Credit', 'AH Credit', 'BCM', 'CSO'] },
   ];

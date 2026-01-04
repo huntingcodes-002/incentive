@@ -8,6 +8,8 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { uploadDocket, listDockets, DocketUploadResponse } from '@/lib/incentive-api';
 import { useToast } from '@/hooks/useToast';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUserDisplayName } from '@/lib/permissions';
 
 interface HoldCaseUploadProps {
   userRole: string;
@@ -20,42 +22,65 @@ export function HoldCaseUpload({ userRole }: HoldCaseUploadProps) {
   const [uploadResult, setUploadResult] = useState<DocketUploadResponse | null>(null);
   const [uploadHistory, setUploadHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const { success, error } = useToast();
+  const [uploadResultsCache, setUploadResultsCache] = useState<Map<string, DocketUploadResponse>>(new Map());
+  const { error, success } = useToast();
+  const { user } = useAuth();
 
   // Fetch upload history
-  useEffect(() => {
-    const fetchHistory = async () => {
-      setLoadingHistory(true);
-      try {
-        const response = await listDockets({ page_size: 10 });
-        if (response.success && response.data) {
-          // Group by upload_batch_id to show history
-          const batches = new Map();
-          response.data.results.forEach((docket: any) => {
-            const batchId = docket.upload_batch_id;
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await listDockets({ page_size: 1000 }); // Get more records to group properly
+      if (response.success && response.data) {
+        // Group by upload_batch_id to show history
+        const batches = new Map<string, any>();
+        response.data.results.forEach((docket: any) => {
+          const batchId = docket.upload_batch_id;
+          if (batchId) {
             if (!batches.has(batchId)) {
+              // Check if we have cached upload result data for this batch
+              const cachedResult = uploadResultsCache.get(batchId);
               batches.set(batchId, {
                 uploadId: batchId,
-                uploadedBy: docket.uploaded_by_name || 'Unknown',
-                date: new Date(docket.created_at).toLocaleDateString(),
-                totalRecords: 0,
-                successful: 0,
-                failed: 0,
+                uploadedBy: docket.uploaded_by_name || docket.uploaded_by_code || docket.uploaded_by || 'Unknown',
+                date: docket.created_at ? new Date(docket.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+                dateTimestamp: docket.created_at ? new Date(docket.created_at).getTime() : 0,
+                totalRecords: cachedResult?.total_rows || 0,
+                successful: cachedResult?.created || 0,
+                failed: cachedResult?.errors || 0,
+                hasCachedData: !!cachedResult,
+                recordCount: 0, // Count of records from listDockets
               });
             }
-            batches.get(batchId).totalRecords++;
-            batches.get(batchId).successful++;
-          });
-          setUploadHistory(Array.from(batches.values()));
-        }
-      } catch (err: any) {
-        console.error('Failed to load upload history:', err);
-      } finally {
-        setLoadingHistory(false);
+            // Count records from listDockets (these are successful records that exist in DB)
+            const batch = batches.get(batchId)!;
+            batch.recordCount++;
+            
+            // If no cached data, use calculated values from listDockets
+            if (!batch.hasCachedData) {
+              batch.totalRecords = batch.recordCount;
+              batch.successful = batch.recordCount;
+              // We can't know failed count from listDockets alone, so it stays 0
+            }
+          }
+        });
+        // Sort by date (newest first)
+        const historyArray = Array.from(batches.values()).sort((a, b) => {
+          return b.dateTimestamp - a.dateTimestamp;
+        });
+        setUploadHistory(historyArray);
       }
-    };
+    } catch (err: any) {
+      console.error('Failed to load upload history:', err);
+      error('Failed to load upload history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
+  useEffect(() => {
     fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,8 +101,33 @@ export function HoldCaseUpload({ userRole }: HoldCaseUploadProps) {
         setUploadResult(response.data);
         setShowValidation(true);
         success(`Upload successful: ${response.data.created} created, ${response.data.errors} errors`);
-        // Refresh history
-        window.location.reload();
+        
+        // Cache the upload result for history
+        if (response.data.batch_id) {
+          setUploadResultsCache(prev => {
+            const newCache = new Map(prev);
+            newCache.set(response.data.batch_id, response.data);
+            return newCache;
+          });
+          
+          // Add new upload to history immediately with actual data from response
+          const currentUserName = user ? getUserDisplayName(user) : 'You';
+          const newUpload = {
+            uploadId: response.data.batch_id,
+            uploadedBy: currentUserName,
+            date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+            dateTimestamp: Date.now(),
+            totalRecords: response.data.total_rows || 0,
+            successful: response.data.created || 0,
+            failed: response.data.errors || 0,
+          };
+          setUploadHistory(prev => [newUpload, ...prev]);
+        }
+        
+        // Refresh history after a delay to get updated data from server
+        setTimeout(() => {
+          fetchHistory();
+        }, 1500);
       } else {
         throw new Error(response.message || 'Upload failed');
       }
@@ -274,17 +324,23 @@ export function HoldCaseUpload({ userRole }: HoldCaseUploadProps) {
                 </tr>
               ) : (
                 uploadHistory.map((upload, index) => (
-                <tr key={upload.uploadId} className={index % 2 === 0 ? 'bg-white' : 'bg-indigo-50'}>
-                  <td className="px-4 py-3 text-indigo-800">{upload.uploadId}</td>
-                  <td className="px-4 py-3 text-slate-600">{upload.uploadedBy}</td>
-                  <td className="px-4 py-3 text-slate-600">{upload.date}</td>
-                  <td className="px-4 py-3 text-slate-600">{upload.totalRecords}</td>
-                  <td className="px-4 py-3 text-emerald-600">{upload.successful}</td>
-                  <td className="px-4 py-3 text-red-600">{upload.failed}</td>
+                <tr key={upload.uploadId || index} className={index % 2 === 0 ? 'bg-white' : 'bg-indigo-50'}>
+                  <td className="px-4 py-3 text-sm text-indigo-800 font-medium">{upload.uploadId || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{upload.uploadedBy || 'Unknown'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{upload.date || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-600">{upload.totalRecords || 0}</td>
+                  <td className="px-4 py-3 text-sm text-emerald-600 font-medium">{upload.successful || 0}</td>
+                  <td className="px-4 py-3 text-sm text-red-600 font-medium">{upload.failed || 0}</td>
                   <td className="px-4 py-3">
-                    <button className="flex items-center gap-1 text-indigo-800 hover:text-indigo-900">
+                    <button 
+                      onClick={() => {
+                        // TODO: Implement view report functionality
+                        console.log('View report for:', upload.uploadId);
+                      }}
+                      className="flex items-center gap-1 text-indigo-800 hover:text-indigo-900 transition-colors"
+                    >
                       <FileText className="w-4 h-4" />
-                      View Report
+                      <span className="text-sm">View Report</span>
                     </button>
                   </td>
                 </tr>
